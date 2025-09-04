@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import traceback
 import typing
 from urllib.parse import urlencode
 import zendriver as zd
@@ -91,26 +92,31 @@ async def scrape(filters: dict[str, str], max_pages: int | None = None, geojson_
     neighbourhoods = _load_neighbourhoods(geojson_file_name)
     print(f"Loaded geojson for neighbourhoods: {geojson_file_name}")
 
-    while True:
-        filters_v2 = filters.copy()
-        filters_v2["page"] = page
 
-        url = _generate_base_url(filters_v2)
-        print(f"Scraping page {page} with url {url}")
+    try:
+        while True:
+            filters_v2 = filters.copy()
+            filters_v2["page"] = page
 
-        tab = await browser.get(url)
+            url = _generate_base_url(filters_v2)
+            print(f"Scraping page {page} with url {url}")
 
-        meta_for_page = await _find_realestate_meta(tab)
+            tab = await browser.get(url)
 
-        print(f"Found mega in page {page}: {meta_for_page}")
-        property_meta.extend(meta_for_page)
+            meta_for_page = await _find_realestate_meta(tab)
 
-        if not await _has_more_pages(tab):
-            break
+            print(f"Found mega in page {page}: {meta_for_page}")
+            property_meta.extend(meta_for_page)
 
-        if max_pages and page >= max_pages:
-            break
-        page += 1
+            if not await _has_more_pages(tab):
+                break
+
+            if max_pages and page >= max_pages:
+                break
+            page += 1
+    except Exception:
+        print(f"Error scraping page {page}: {traceback.format_exc()}")
+        print(f"Stopping here...")
 
 
     # TODO - clean up duplicates
@@ -120,11 +126,13 @@ async def scrape(filters: dict[str, str], max_pages: int | None = None, geojson_
 
     parsed_properties: list[Property] = []
 
-
     for property in properties:
-        parsed = await parse_property_page(tab, property, neighbourhoods)
-        print(f"Parsed property: {parsed}")
-        parsed_properties.append(parsed)
+        try:
+            parsed = await parse_property_page(tab, property, neighbourhoods)
+            print(f"Parsed property: {parsed}")
+            parsed_properties.append(parsed)
+        except Exception:
+            print(f"Error parsing property {property}: {traceback.format_exc()}")
 
     properties_to_csv(parsed_properties, "output.csv")
     # json dump properties
@@ -135,5 +143,5 @@ async def scrape(filters: dict[str, str], max_pages: int | None = None, geojson_
         f.write(as_json)
 
 def main():
-    asyncio.run(scrape({"location": "0.20061"}, max_pages=1))
+    asyncio.run(scrape({"location": "0.20061"}))
 main()
